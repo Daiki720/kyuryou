@@ -142,8 +142,8 @@
             background: white;
             padding: 18px;
             border-radius: 10px;
-            width: 92%;
-            max-width: 400px;
+            width: 95%;
+            max-width: 500px;
             box-shadow: 0 4px 20px rgba(0,0,0,0.2);
         }
         .modal h3 {
@@ -154,7 +154,7 @@
         }
         .input-row {
             display: flex;
-            flex-direction:column;
+            flex-direction:row;
             gap: 10px;
             margin-bottom: 12px;
         }
@@ -183,7 +183,7 @@
         }
         .modal-btns {
             display: flex;
-            flex-direction:column;
+            flex-direction:row;
             gap: 10px;
             margin-top: 20px;
         }
@@ -326,10 +326,9 @@
         .workplace-row{
             display:flex;
             align-items:center;
-            gap:10px;
+            gap:8px;
             width:100%;
-            flex-wrap:nowrap;
-            align-items:flex-start;
+            justify-content:space-between;
         }
 
         .workplace-left{
@@ -342,11 +341,14 @@
             white-space:nowrap;
             font-weight:bold;
             font-size:15px;
+            overflow:hidden;
+            text-overflow:ellipsis;
         }
 
         .workplace-info{
             white-space:nowrap;
             font-size:11px;
+            color:#666;
         }
 
         .row{
@@ -524,6 +526,12 @@ function addWorkplace(){
     return;
   }
 
+  // 重複チェック
+  if(workplaces.some(w => w.name === name)){
+    alert("同じ勤務先が既に登録されています");
+    return;
+  }
+
   workplaces.push({name,hourly,transport});
 
   localStorage.setItem("workplaces",JSON.stringify(workplaces));
@@ -546,8 +554,7 @@ function renderWorkplaces(){
         <div class="workplace-row">
 
             <div class="workplace-name">${w.name}</div>
-            <div class="workplace-info">時給 ${w.hourly}円</div>
-            <div class="workplace-info">交通費 ${w.transport}円</div>
+            <div class="workplace-info">時給 ${w.hourly}円 ・ 交通費 ${w.transport}円</div>
 
         <div class="right">
             <button class="app-btn red-btn small-btn" onclick="deleteWorkplace(${i})">削除</button>
@@ -562,12 +569,8 @@ function renderWorkplaces(){
 
 // 給料計算ロジック 
 function calculateDaySalary(data) {
-    const work = workplaces.find(w => w.name === data.workplace);
-
-    if (!work) {return { pay: 0, minutes: 0 };}
-
-    const BASE_HOURLY_WAGE = work.hourly;
-    const TRANSPORTATION_FEE = work.transport;
+    const BASE_HOURLY_WAGE = data.hourly;
+    const TRANSPORTATION_FEE = data.transport;
     const startVal = data.start;
     const endVal = data.end;
     const restStartVal = data.rStart;
@@ -617,7 +620,11 @@ function calculateDaySalary(data) {
 
         actualWorkMinutes++;
 
-        const isMidnight = (m >= 22 * 60 && m < 25 * 60);
+        const minuteOfDay = m % (24 * 60);
+
+        const isMidnight =
+            minuteOfDay >= 22 * 60 ||
+            minuteOfDay < 5 * 60;
         const isOvertime = (actualWorkMinutes > 8 * 60);
 
         if (isMidnight && isOvertime) {salary += wageMidnightOvertime;}
@@ -744,17 +751,36 @@ function changeMonth(dir) {
 }
 
 // モーダルを開く
-function openModal(dateStr) {
+function openModal(dateStr){
+
+    if(workplaces.length === 0){
+        alert("先に勤務先を登録してください");
+        return;
+    }
+
     selectedDateStr = dateStr;
     document.getElementById('modalDateTitle').innerText = `${dateStr} の勤務入力`;
     
     // 既存データがあればセット、なければデフォルト値
     if (salaryData[dateStr]) {
-        document.getElementById('mStart').value = salaryData[dateStr].start;
-        document.getElementById('mEnd').value = salaryData[dateStr].end;
-        document.getElementById('mRestStart').value = salaryData[dateStr].rStart;
-        document.getElementById('mRestEnd').value = salaryData[dateStr].rEnd;
-    } else {
+
+    renderWorkplaceSelect();
+
+    document.getElementById("mWorkplace").value =
+        salaryData[dateStr].workplace || "";
+
+    document.getElementById('mStart').value =
+        salaryData[dateStr].start;
+
+    document.getElementById('mEnd').value =
+        salaryData[dateStr].end;
+
+    document.getElementById('mRestStart').value =
+        salaryData[dateStr].rStart;
+
+    document.getElementById('mRestEnd').value =
+        salaryData[dateStr].rEnd;
+    }else {
         document.getElementById('mStart').value = "17:00";
         document.getElementById('mEnd').value = "23:00";
         document.getElementById('mRestStart').value = "17:00";
@@ -786,8 +812,26 @@ function renderWorkplaceSelect(){
 
 // データの保存
 function saveData() {
+
+    if(workplaces.length === 0){
+        alert("先に勤務先を登録してください");
+        return;
+    }
+
+    if(!document.getElementById("mWorkplace").value){
+        alert("勤務先を選択してください");
+        return;
+    }
+
+    const selectedWork = workplaces.find(
+    w => w.name === document.getElementById("mWorkplace").value
+    );
+
     salaryData[selectedDateStr] = {
-        workplace: document.getElementById("mWorkplace").value,
+        workplace: selectedWork.name,
+        hourly: selectedWork.hourly,
+        transport: selectedWork.transport,
+
         start: document.getElementById('mStart').value,
         end: document.getElementById('mEnd').value,
         rStart: document.getElementById('mRestStart').value,
@@ -809,10 +853,22 @@ function deleteData() {
 }
 // 勤務先の削除
 function deleteWorkplace(i){
+
+  const name = workplaces[i].name;
+
+  if(!confirm(`${name} を削除しますか？`)){
+      return;
+  }
+
   workplaces.splice(i,1);
-  localStorage.setItem("workplaces",JSON.stringify(workplaces));
+
+  localStorage.setItem(
+      "workplaces",
+      JSON.stringify(workplaces)
+  );
 
   renderWorkplaces();
+  generateCalendar(currentYear,currentMonth);
 }
 
 // 初期実行
